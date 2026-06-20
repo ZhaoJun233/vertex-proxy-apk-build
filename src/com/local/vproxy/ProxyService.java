@@ -3,6 +3,7 @@ package com.local.vproxy;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -14,15 +15,19 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.regex.Pattern;
+import java.io.RandomAccessFile;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.util.regex.Pattern;
 
 public class ProxyService extends Service {
     private static final String CHANNEL_ID = "vertex_proxy";
     private static final String PREFS = "vproxy_settings";
     private Process process;
     private File wrapperLog;
+    private volatile boolean keepAliveRunning;
 
     @Override
     public void onCreate() {
@@ -46,11 +51,13 @@ public class ProxyService extends Service {
             }
         }
         startProxy();
+        startKeepAliveLoop();
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
+        keepAliveRunning = false;
         if (process != null) {
             process.destroy();
             process = null;
@@ -120,6 +127,89 @@ public class ProxyService extends Service {
                 writer.write(System.currentTimeMillis() + " " + message + "\n");
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    private synchronized void startKeepAliveLoop() {
+        if (keepAliveRunning) {
+            return;
+        }
+        keepAliveRunning = true;
+        new Thread(() -> {
+            int tick = 0;
+            appendWrapperLog("keepalive loop started");
+            while (keepAliveRunning) {
+                try {
+                    readLogsSilently();
+                    if (tick % 3 == 0) {
+                        warmLocalEndpoints();
+                    }
+                    boolean shouldRestart;
+                    synchronized (ProxyService.this) {
+                        shouldRestart = process == null;
+                    }
+                    if (shouldRestart && keepAliveRunning) {
+                        appendWrapperLog("keepalive detected stopped native process; restarting");
+                        startProxy();
+                    }
+                    tick++;
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    appendWrapperLog("keepalive failed: " + e.getClass().getName() + ": " + e.getMessage());
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+            appendWrapperLog("keepalive loop stopped");
+        }, "vproxy-keepalive").start();
+    }
+
+    private void readLogsSilently() {
+        File workDir = getFilesDir();
+        readFileSilently(new File(workDir, "wrapper.log"));
+        readFileSilently(new File(workDir, "vproxy.log"));
+    }
+
+    private void readFileSilently(File file) {
+        if (!file.exists()) {
+            return;
+        }
+        try (RandomAccessFile reader = new RandomAccessFile(file, "r")) {
+            long length = reader.length();
+            int bytesToRead = (int) Math.min(4096, length);
+            reader.seek(Math.max(0, length - bytesToRead));
+            byte[] buffer = new byte[bytesToRead];
+            reader.readFully(buffer);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void warmLocalEndpoints() {
+        httpProbe("http://127.0.0.1:2156/health");
+        httpProbe("http://127.0.0.1:2156/v1/models");
+    }
+
+    private void httpProbe(String urlText) {
+        HttpURLConnection connection = null;
+        try {
+            URL url = new URL(urlText);
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(1000);
+            connection.setReadTimeout(1000);
+            connection.setRequestMethod("GET");
+            connection.getResponseCode();
+        } catch (Exception ignored) {
+        } finally {
+            if (connection != null) {
+                connection.disconnect();
+            }
         }
     }
 
@@ -249,6 +339,12 @@ public class ProxyService extends Service {
     }
 
     private Notification notification() {
+        Intent intent = new Intent(this, LogActivity.class);
+        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+        if (Build.VERSION.SDK_INT >= 23) {
+            flags |= PendingIntent.FLAG_IMMUTABLE;
+        }
+        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, intent, flags);
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
@@ -260,14 +356,16 @@ public class ProxyService extends Service {
                 manager.createNotificationChannel(channel);
             }
             return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Vertex Proxy 正在运行")
+                .setContentTitle("Vertex Proxy 正在后台运行")
                 .setContentText("本地端点 http://127.0.0.1:2156/v1")
+                .setContentIntent(pendingIntent)
                 .setSmallIcon(android.R.drawable.stat_sys_upload_done)
                 .build();
         }
         return new Notification.Builder(this)
-            .setContentTitle("Vertex Proxy 正在运行")
+            .setContentTitle("Vertex Proxy 正在后台运行")
             .setContentText("本地端点 http://127.0.0.1:2156/v1")
+            .setContentIntent(pendingIntent)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
             .build();
     }

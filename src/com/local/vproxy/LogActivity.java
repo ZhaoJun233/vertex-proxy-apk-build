@@ -48,10 +48,18 @@ public class LogActivity extends Activity {
     }
 
     private void refreshLogs() {
+        boolean followBottom = isNearBottom();
+        int oldScrollY = scrollView.getScrollY();
         String text = readAllLogs();
         int start = Math.max(0, text.length() - 30000);
         textView.setText(text.substring(start));
-        scrollView.post(() -> scrollView.fullScroll(ScrollView.FOCUS_DOWN));
+        scrollView.post(() -> {
+            if (followBottom) {
+                scrollView.fullScroll(ScrollView.FOCUS_DOWN);
+            } else {
+                scrollView.scrollTo(0, oldScrollY);
+            }
+        });
     }
 
     private String readAllLogs() {
@@ -76,6 +84,15 @@ public class LogActivity extends Activity {
         } catch (Exception e) {
             all.append("读取 ").append(name).append(" 失败: ").append(e.getMessage()).append("\n\n");
         }
+    }
+
+    private boolean isNearBottom() {
+        if (scrollView.getChildCount() == 0) {
+            return true;
+        }
+        int contentHeight = scrollView.getChildAt(0).getHeight();
+        int visibleBottom = scrollView.getScrollY() + scrollView.getHeight();
+        return contentHeight - visibleBottom <= dp(24);
     }
 
     private int dp(int value) {
