@@ -2,7 +2,16 @@
 
 本仓库是一个 Android APK 构建工程，用来把本地 Vertex/Gemini 代理封装成手机上的本地服务。安装后，其他 Android agent 可以通过 OpenAI 兼容接口访问本机代理。
 
-本 Android 构建版基于本地源项目 `E:\project\vertex-master` 制作。
+## 上游项目与开源协议
+
+本项目完全基于 `vertex-proxy` 开发。
+
+- 上游项目：`vertex-proxy`
+- 发布地址：[类脑 Discord 帖子](https://discord.com/channels/1134557553011998840/1494652033242894446/1517459804505772062)
+- 本 Android 构建使用的本地源项目：`E:\project\vertex-master`
+- 开源协议：[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)
+
+本仓库保留同样的非商业使用协议声明，详见 [`LICENSE.md`](LICENSE.md)。
 
 ## APK 信息
 

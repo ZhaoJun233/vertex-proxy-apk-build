@@ -6,8 +6,17 @@ This repository contains an Android APK build of a local Vertex/Gemini proxy.
 The app runs a local HTTP service on the phone and exposes an OpenAI-compatible
 endpoint for other Android agents.
 
-This Android build was made from the local source project at
-`E:\project\vertex-master`.
+## Upstream And License
+
+This project is developed entirely based on `vertex-proxy`.
+
+- Upstream project: `vertex-proxy`
+- Release/source post: [类脑 Discord post](https://discord.com/channels/1134557553011998840/1494652033242894446/1517459804505772062)
+- Local source used for this Android build: `E:\project\vertex-master`
+- License: [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)
+
+This repository keeps the same noncommercial licensing notice. See
+[`LICENSE.md`](LICENSE.md).
 
 ## APK
 
