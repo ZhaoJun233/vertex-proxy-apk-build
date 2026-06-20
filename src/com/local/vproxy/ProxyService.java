@@ -14,6 +14,7 @@ import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.regex.Pattern;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
@@ -74,6 +75,7 @@ public class ProxyService extends Service {
             }
             writeRuntimeConfig(workDir);
             writeModelsConfig(workDir);
+            writeBundledNodes(workDir);
 
             File binary = new File(getApplicationInfo().nativeLibraryDir, "libvproxy.so");
             File logFile = new File(workDir, "vproxy.log");
@@ -81,6 +83,7 @@ public class ProxyService extends Service {
             ProcessBuilder builder = new ProcessBuilder(binary.getAbsolutePath());
             builder.directory(workDir);
             File configDir = new File(workDir, "config");
+            builder.environment().put("VPROXY_CONFIG_DIR", configDir.getAbsolutePath());
             builder.environment().put("VPROXY_CONFIG", new File(configDir, "config.json").getAbsolutePath());
             builder.environment().put("VPROXY_MODELS", new File(configDir, "models.json").getAbsolutePath());
             builder.environment().put("VPROXY_API_KEYS", new File(configDir, "api_keys.txt").getAbsolutePath());
@@ -133,14 +136,17 @@ public class ProxyService extends Service {
         }
         File configFile = new File(configDir, "config.json");
         if (configFile.exists()) {
+            migrateDefaultProxyConfig(configFile);
             appendWrapperLog("keep existing config.json");
         } else {
             String configJson = "{\n" +
                 "  \"port_api\": 2156,\n" +
                 "  \"max_retries\": 2,\n" +
                 "  \"admin_password\": \"" + escapeJson(password.trim()) + "\",\n" +
-                "  \"proxy_url\": \"socks5://127.0.0.1:1080\",\n" +
-                "  \"parallel_pool_enabled\": false,\n" +
+                "  \"proxy_url\": \"\",\n" +
+                "  \"parallel_pool_enabled\": true,\n" +
+                "  \"parallel_pool_size\": 4,\n" +
+                "  \"parallel_node_top_k\": 10,\n" +
                 "  \"force_no_stream\": false,\n" +
                 "  \"token_pool_size\": 8,\n" +
                 "  \"max_n\": 8\n" +
@@ -157,6 +163,45 @@ public class ProxyService extends Service {
         } else {
             appendWrapperLog("keep existing api_keys.txt");
         }
+    }
+
+    private void migrateDefaultProxyConfig(File configFile) {
+        try {
+            String text = new String(Files.readAllBytes(configFile.toPath()), StandardCharsets.UTF_8);
+            if (!text.contains("\"proxy_url\"") || !text.contains("127.0.0.1:1080")) {
+                return;
+            }
+            text = Pattern.compile("\"proxy_url\"\\s*:\\s*\"socks5://127\\.0\\.0\\.1:1080\"")
+                .matcher(text)
+                .replaceAll("\"proxy_url\": \"\"");
+            text = Pattern.compile("\"parallel_pool_enabled\"\\s*:\\s*false")
+                .matcher(text)
+                .replaceAll("\"parallel_pool_enabled\": true");
+            if (!text.contains("\"parallel_pool_size\"")) {
+                text = text.replaceFirst("\"parallel_pool_enabled\"\\s*:\\s*true", "\"parallel_pool_enabled\": true,\\n  \"parallel_pool_size\": 4");
+            }
+            if (!text.contains("\"parallel_node_top_k\"")) {
+                text = text.replaceFirst("\"parallel_pool_size\"\\s*:\\s*4", "\"parallel_pool_size\": 4,\\n  \"parallel_node_top_k\": 10");
+            }
+            Files.write(configFile.toPath(), text.getBytes(StandardCharsets.UTF_8));
+            appendWrapperLog("migrated default 127.0.0.1:1080 proxy to bundled node pool");
+        } catch (Exception e) {
+            appendWrapperLog("config migration skipped: " + e.getClass().getName() + ": " + e.getMessage());
+        }
+    }
+
+    private void writeBundledNodes(File workDir) throws IOException {
+        File configDir = new File(workDir, "config");
+        if (!configDir.exists()) {
+            configDir.mkdirs();
+        }
+        File nodesFile = new File(configDir, "nodes.json");
+        if (nodesFile.exists()) {
+            appendWrapperLog("keep existing nodes.json");
+            return;
+        }
+        copyAsset("config/nodes.json", nodesFile, false);
+        appendWrapperLog("created bundled nodes.json");
     }
 
     private String escapeJson(String value) {

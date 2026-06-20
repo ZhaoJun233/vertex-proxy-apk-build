@@ -46,6 +46,9 @@ var (
 )
 
 func fileDir() string {
+	if dir := os.Getenv("VPROXY_CONFIG_DIR"); dir != "" {
+		return dir
+	}
 	if exe, err := os.Executable(); err == nil {
 		return filepath.Join(filepath.Dir(exe), "config")
 	}

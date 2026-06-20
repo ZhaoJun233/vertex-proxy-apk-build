@@ -1,0 +1,64 @@
+{
+  "nodes": [
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-01 | [IPLC·HK] 香港801|IPLC专线|1.5x",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@ipox2.xmrthnode.com:24501/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-01%20%7C%20%5BIPLC%C2%B7HK%5D%20%E9%A6%99%E6%B8%AF801%7CIPLC%E4%B8%93%E7%BA%BF%7C1.5x",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-02 | [IPLC·HK] 香港805|IPLC专线|1.5x",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@ipox2.xmrthnode.com:24505/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-02%20%7C%20%5BIPLC%C2%B7HK%5D%20%E9%A6%99%E6%B8%AF805%7CIPLC%E4%B8%93%E7%BA%BF%7C1.5x",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-03 | [IPLC·HK] 香港802|IPLC专线|1.5x",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@ipox2.xmrthnode.com:24502/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-03%20%7C%20%5BIPLC%C2%B7HK%5D%20%E9%A6%99%E6%B8%AF802%7CIPLC%E4%B8%93%E7%BA%BF%7C1.5x",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-04 | [IPLC·HK] 香港804|IPLC专线|1.5x",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@ipox2.xmrthnode.com:24504/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-04%20%7C%20%5BIPLC%C2%B7HK%5D%20%E9%A6%99%E6%B8%AF804%7CIPLC%E4%B8%93%E7%BA%BF%7C1.5x",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-05 | [IPLC·HK] 香港803|IPLC专线|1.5x",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@ipox2.xmrthnode.com:24503/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-05%20%7C%20%5BIPLC%C2%B7HK%5D%20%E9%A6%99%E6%B8%AF803%7CIPLC%E4%B8%93%E7%BA%BF%7C1.5x",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-06 | 日本621 中继",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@pca2k.xmrthnode.com:41021/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-06%20%7C%20%E6%97%A5%E6%9C%AC621%20%E4%B8%AD%E7%BB%A7",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-07 | 日本624 中继",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@pca2k.xmrthnode.com:41024/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-07%20%7C%20%E6%97%A5%E6%9C%AC624%20%E4%B8%AD%E7%BB%A7",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-08 | 马来753 中继",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@pca2k.xmrthnode.com:41053/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-08%20%7C%20%E9%A9%AC%E6%9D%A5753%20%E4%B8%AD%E7%BB%A7",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-09 | 新加坡641 中继",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@pca2k.xmrthnode.com:41040/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-09%20%7C%20%E6%96%B0%E5%8A%A0%E5%9D%A1641%20%E4%B8%AD%E7%BB%A7",
+      "disabled": false
+    },
+    {
+      "type": "trojan",
+      "name": "XMRth-Google-10 | 香港304 中继",
+      "raw_uri": "trojan://9690ec80-d0d0-3c4f-997d-5ec650d58c88@pca2k.xmrthnode.com:41304/?security=tls&sni=mpvideo.qpic.cn&allowInsecure=1#XMRth-Google-10%20%7C%20%E9%A6%99%E6%B8%AF304%20%E4%B8%AD%E7%BB%A7",
+      "disabled": false
+    }
+  ]
+}
