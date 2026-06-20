@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.PowerManager;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
@@ -28,10 +29,12 @@ public class ProxyService extends Service {
     private Process process;
     private File wrapperLog;
     private volatile boolean keepAliveRunning;
+    private PowerManager.WakeLock wakeLock;
 
     @Override
     public void onCreate() {
         super.onCreate();
+        acquireWakeLock();
         if (Build.VERSION.SDK_INT >= 29) {
             startForeground(1, notification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
@@ -62,7 +65,15 @@ public class ProxyService extends Service {
             process.destroy();
             process = null;
         }
+        releaseWakeLock();
         super.onDestroy();
+    }
+
+    @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        appendWrapperLog("task removed; keeping foreground service alive");
+        startKeepAliveLoop();
+        super.onTaskRemoved(rootIntent);
     }
 
     @Override
@@ -130,6 +141,33 @@ public class ProxyService extends Service {
         }
     }
 
+    private void acquireWakeLock() {
+        try {
+            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+            if (powerManager == null) {
+                return;
+            }
+            if (wakeLock == null) {
+                wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VertexProxy:AlwaysOn");
+                wakeLock.setReferenceCounted(false);
+            }
+            if (!wakeLock.isHeld()) {
+                wakeLock.acquire();
+            }
+        } catch (Exception e) {
+            appendWrapperLog("wakelock acquire failed: " + e.getClass().getName() + ": " + e.getMessage());
+        }
+    }
+
+    private void releaseWakeLock() {
+        try {
+            if (wakeLock != null && wakeLock.isHeld()) {
+                wakeLock.release();
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
     private synchronized void startKeepAliveLoop() {
         if (keepAliveRunning) {
             return;
@@ -141,9 +179,7 @@ public class ProxyService extends Service {
             while (keepAliveRunning) {
                 try {
                     readLogsSilently();
-                    if (tick % 3 == 0) {
-                        warmLocalEndpoints();
-                    }
+                    warmLocalEndpoints();
                     boolean shouldRestart;
                     synchronized (ProxyService.this) {
                         shouldRestart = process == null;

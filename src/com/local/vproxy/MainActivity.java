@@ -8,6 +8,8 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.text.InputType;
 import android.widget.Button;
 import android.widget.EditText;
@@ -162,6 +164,7 @@ public class MainActivity extends Activity {
             .apply();
 
         startProxyService(password);
+        requestIgnoreBatteryOptimizations();
         status.setText(
             "\u5df2\u53d1\u9001\u542f\u52a8\u547d\u4ee4\u3002\n\n" +
             "\u6b63\u5728\u7b49\u5f85\u672c\u5730\u670d\u52a1\u5c31\u7eea\uff0c\u8bf7\u7a0d\u5019\u2026\n\n" +
@@ -184,6 +187,22 @@ public class MainActivity extends Activity {
             startService(intent);
         }
         startLogMonitor();
+    }
+
+    private void requestIgnoreBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < 23) {
+            return;
+        }
+        try {
+            PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+            if (powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+                return;
+            }
+            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+            intent.setData(Uri.parse("package:" + getPackageName()));
+            startActivity(intent);
+        } catch (Exception ignored) {
+        }
     }
 
     private void startLogMonitor() {
