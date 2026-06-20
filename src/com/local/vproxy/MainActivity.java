@@ -110,6 +110,12 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
+
+        if (savedPassword != null && savedPassword.trim().length() > 0) {
+            status.setText("\u5df2\u68c0\u6d4b\u5230\u5df2\u4fdd\u5b58\u5bc6\u7801\uff0c\u6b63\u5728\u81ea\u52a8\u542f\u52a8\u5e76\u9884\u70ed\u670d\u52a1\u2026");
+            startProxyService(savedPassword.trim());
+            waitForService(false);
+        }
     }
 
     private void saveAndStart() {
@@ -124,13 +130,7 @@ public class MainActivity extends Activity {
             .putString("admin_password", password)
             .apply();
 
-        Intent intent = new Intent(this, ProxyService.class);
-        intent.putExtra("admin_password", password);
-        if (Build.VERSION.SDK_INT >= 26) {
-            startForegroundService(intent);
-        } else {
-            startService(intent);
-        }
+        startProxyService(password);
         status.setText(
             "\u5df2\u53d1\u9001\u542f\u52a8\u547d\u4ee4\u3002\n\n" +
             "\u6b63\u5728\u7b49\u5f85\u672c\u5730\u670d\u52a1\u5c31\u7eea\uff0c\u8bf7\u7a0d\u5019\u2026\n\n" +
@@ -142,6 +142,16 @@ public class MainActivity extends Activity {
             "Model: gemini-2.5-flash"
         );
         waitForService(false);
+    }
+
+    private void startProxyService(String password) {
+        Intent intent = new Intent(this, ProxyService.class);
+        intent.putExtra("admin_password", password);
+        if (Build.VERSION.SDK_INT >= 26) {
+            startForegroundService(intent);
+        } else {
+            startService(intent);
+        }
     }
 
     private int dp(int value) {
@@ -189,6 +199,7 @@ public class MainActivity extends Activity {
             for (int i = 1; i <= 30; i++) {
                 try {
                     httpGet("http://127.0.0.1:2156/health", null, 1000, 2000);
+                    warmUpService();
                     int attempt = i;
                     runOnUiThread(() -> {
                         status.setText(
@@ -218,6 +229,32 @@ public class MainActivity extends Activity {
                 (err == null ? "" : err.getClass().getSimpleName() + ": " + err.getMessage())
             ));
         }).start();
+    }
+
+    private void warmUpService() {
+        try {
+            httpGet("http://127.0.0.1:2156/v1/models", null, 1000, 2500);
+        } catch (Exception ignored) {
+        }
+        try {
+            httpGet(ADMIN_URL + "?warmup=" + System.currentTimeMillis(), null, 1000, 2500);
+        } catch (Exception ignored) {
+        }
+        readLogsSilently();
+    }
+
+    private void readLogsSilently() {
+        try {
+            File wrapper = new File(getFilesDir(), "wrapper.log");
+            File nativeLog = new File(getFilesDir(), "vproxy.log");
+            if (wrapper.exists()) {
+                Files.readAllBytes(wrapper.toPath());
+            }
+            if (nativeLog.exists()) {
+                Files.readAllBytes(nativeLog.toPath());
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void showLogs() {

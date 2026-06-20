@@ -75,7 +75,7 @@ public class ProxyService extends Service {
             }
             writeRuntimeConfig(workDir);
             writeModelsConfig(workDir);
-            writeBundledNodes(workDir);
+            removeBundledNodes(workDir);
 
             File binary = new File(getApplicationInfo().nativeLibraryDir, "libvproxy.so");
             File logFile = new File(workDir, "vproxy.log");
@@ -144,9 +144,7 @@ public class ProxyService extends Service {
                 "  \"max_retries\": 2,\n" +
                 "  \"admin_password\": \"" + escapeJson(password.trim()) + "\",\n" +
                 "  \"proxy_url\": \"\",\n" +
-                "  \"parallel_pool_enabled\": true,\n" +
-                "  \"parallel_pool_size\": 4,\n" +
-                "  \"parallel_node_top_k\": 10,\n" +
+                "  \"parallel_pool_enabled\": false,\n" +
                 "  \"force_no_stream\": false,\n" +
                 "  \"token_pool_size\": 8,\n" +
                 "  \"max_n\": 8\n" +
@@ -174,34 +172,28 @@ public class ProxyService extends Service {
             text = Pattern.compile("\"proxy_url\"\\s*:\\s*\"socks5://127\\.0\\.0\\.1:1080\"")
                 .matcher(text)
                 .replaceAll("\"proxy_url\": \"\"");
-            text = Pattern.compile("\"parallel_pool_enabled\"\\s*:\\s*false")
-                .matcher(text)
-                .replaceAll("\"parallel_pool_enabled\": true");
-            if (!text.contains("\"parallel_pool_size\"")) {
-                text = text.replaceFirst("\"parallel_pool_enabled\"\\s*:\\s*true", "\"parallel_pool_enabled\": true,\\n  \"parallel_pool_size\": 4");
-            }
-            if (!text.contains("\"parallel_node_top_k\"")) {
-                text = text.replaceFirst("\"parallel_pool_size\"\\s*:\\s*4", "\"parallel_pool_size\": 4,\\n  \"parallel_node_top_k\": 10");
-            }
             Files.write(configFile.toPath(), text.getBytes(StandardCharsets.UTF_8));
-            appendWrapperLog("migrated default 127.0.0.1:1080 proxy to bundled node pool");
+            appendWrapperLog("migrated default 127.0.0.1:1080 proxy to empty proxy");
         } catch (Exception e) {
             appendWrapperLog("config migration skipped: " + e.getClass().getName() + ": " + e.getMessage());
         }
     }
 
-    private void writeBundledNodes(File workDir) throws IOException {
+    private void removeBundledNodes(File workDir) {
         File configDir = new File(workDir, "config");
-        if (!configDir.exists()) {
-            configDir.mkdirs();
-        }
         File nodesFile = new File(configDir, "nodes.json");
-        if (nodesFile.exists()) {
-            appendWrapperLog("keep existing nodes.json");
-            return;
+        if (!nodesFile.exists()) return;
+        try {
+            String text = new String(Files.readAllBytes(nodesFile.toPath()), StandardCharsets.UTF_8);
+            if (!text.contains("XMRth-Google-")) {
+                appendWrapperLog("keep existing nodes.json");
+                return;
+            }
+            Files.write(nodesFile.toPath(), "{\"nodes\":[]}\n".getBytes(StandardCharsets.UTF_8));
+            appendWrapperLog("removed bundled XMRth-Google nodes");
+        } catch (Exception e) {
+            appendWrapperLog("bundled node cleanup skipped: " + e.getClass().getName() + ": " + e.getMessage());
         }
-        copyAsset("config/nodes.json", nodesFile, false);
-        appendWrapperLog("created bundled nodes.json");
     }
 
     private String escapeJson(String value) {
