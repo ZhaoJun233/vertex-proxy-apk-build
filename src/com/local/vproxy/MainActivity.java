@@ -1,8 +1,11 @@
 package com.local.vproxy;
 
+import android.Manifest;
+import android.app.AlarmManager;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,6 +31,7 @@ public class MainActivity extends Activity {
     private static final String ADMIN_URL = "http://127.0.0.1:2156/admin/";
     private static final String BASE_URL = "http://127.0.0.1:2156/v1";
     private static final String PREFS = "vproxy_settings";
+    private static final String PREF_SERVICE_ENABLED = "service_enabled";
 
     private EditText adminPasswordInput;
     private TextView status;
@@ -39,8 +43,7 @@ public class MainActivity extends Activity {
             readLogsSilently();
             new Thread(() -> {
                 try {
-                    httpGet("http://127.0.0.1:2156/health", null, 800, 1500);
-                    httpGet("http://127.0.0.1:2156/v1/models", null, 800, 1500);
+                    httpGet("http://127.0.0.1:2156/", null, 800, 1500);
                 } catch (Exception ignored) {
                 }
             }).start();
@@ -123,6 +126,10 @@ public class MainActivity extends Activity {
         Button stop = new Button(this);
         stop.setText("\u505c\u6b62\u670d\u52a1");
         stop.setOnClickListener(v -> {
+            getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit()
+                .putBoolean(PREF_SERVICE_ENABLED, false)
+                .apply();
             stopService(new Intent(this, ProxyService.class));
             status.setText("\u670d\u52a1\u5df2\u505c\u6b62\u3002");
         });
@@ -144,7 +151,9 @@ public class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        if (savedPassword != null && savedPassword.trim().length() > 0) {
+        boolean shouldAutoStart = savedPassword != null && savedPassword.trim().length() > 0 &&
+            prefs.getBoolean(PREF_SERVICE_ENABLED, true);
+        if (shouldAutoStart) {
             status.setText("\u5df2\u68c0\u6d4b\u5230\u5df2\u4fdd\u5b58\u5bc6\u7801\uff0c\u6b63\u5728\u81ea\u52a8\u542f\u52a8\u5e76\u9884\u70ed\u670d\u52a1\u2026");
             startProxyService(savedPassword.trim());
             waitForService(false);
@@ -161,8 +170,11 @@ public class MainActivity extends Activity {
         getSharedPreferences(PREFS, MODE_PRIVATE)
             .edit()
             .putString("admin_password", password)
+            .putBoolean(PREF_SERVICE_ENABLED, true)
             .apply();
 
+        requestPostNotifications();
+        requestExactAlarmPermission();
         startProxyService(password);
         requestIgnoreBatteryOptimizations();
         status.setText(
@@ -181,12 +193,40 @@ public class MainActivity extends Activity {
     private void startProxyService(String password) {
         Intent intent = new Intent(this, ProxyService.class);
         intent.putExtra("admin_password", password);
+        intent.putExtra(PREF_SERVICE_ENABLED, true);
         if (Build.VERSION.SDK_INT >= 26) {
             startForegroundService(intent);
         } else {
             startService(intent);
         }
         startLogMonitor();
+    }
+
+    private void requestPostNotifications() {
+        if (Build.VERSION.SDK_INT < 33) {
+            return;
+        }
+        try {
+            if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 1001);
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void requestExactAlarmPermission() {
+        if (Build.VERSION.SDK_INT < 31) {
+            return;
+        }
+        try {
+            AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
+            if (alarmManager != null && !alarmManager.canScheduleExactAlarms()) {
+                Intent intent = new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     private void requestIgnoreBatteryOptimizations() {

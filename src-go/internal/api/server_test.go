@@ -56,3 +56,18 @@ func TestStatusWriterFlush(t *testing.T) {
 		t.Fatal("Flush 应透传到底层 ResponseRecorder")
 	}
 }
+
+func TestShouldUseFakeStream(t *testing.T) {
+	if !shouldUseFakeStream(true, false, true) {
+		t.Fatal("force_no_stream should keep external SSE but route internally through fake stream")
+	}
+	if !shouldUseFakeStream(true, true, false) {
+		t.Fatal("fake stream model prefix should use fake stream")
+	}
+	if shouldUseFakeStream(false, true, true) {
+		t.Fatal("non-stream request should not use SSE fake stream")
+	}
+	if shouldUseFakeStream(true, false, false) {
+		t.Fatal("plain stream request should use true stream")
+	}
+}

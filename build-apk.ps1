@@ -66,7 +66,7 @@ Run-Checked (Join-Path $BuildTools 'aapt2.exe') ([string[]]@(
     '--manifest', (Join-Path $Build 'AndroidManifest.xml'),
     '--java', $Gen,
     '--min-sdk-version', '23',
-    '--target-sdk-version', '35',
+    '--target-sdk-version', '34',
     (Join-Path $Out 'resources.zip')
 ))
 

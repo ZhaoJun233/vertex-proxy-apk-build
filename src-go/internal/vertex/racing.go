@@ -12,19 +12,28 @@ import (
 )
 
 func RunParallel[T any](ctx context.Context, cfg config.AppConfig, op func(ctx context.Context, proxyURI string) (T, error)) (T, error) {
-	cands := nodes.SelectForParallel(cfg.ParallelPoolSize)
-	if !cfg.ParallelPoolEnabled || len(cands) == 0 {
-		proxy := cfg.ActiveNodeURI
-		if proxy == "" {
-			proxy = cfg.ProxyURL
-		}
-		log.Printf("[Vertex] [RunParallel] 降级为单节点运行: %s", proxy)
+	var zero T
+	poolSize := effectiveParallelPoolSize(cfg)
+	proxy := configuredSingleProxy(cfg)
+
+	if !cfg.ParallelPoolEnabled && proxy != "" {
+		log.Printf("[Vertex] [RunParallel] running with single configured proxy: %s", proxy)
 		return op(ctx, proxy)
 	}
 
-	log.Printf("[Vertex] [RunParallel] 开启并发测速, %d 个节点参与", len(cands))
+	cands := nodes.SelectForParallel(poolSize)
+	if len(cands) == 0 {
+		if proxy != "" {
+			log.Printf("[Vertex] [RunParallel] no usable nodes; falling back to configured proxy: %s", proxy)
+			return op(ctx, proxy)
+		}
+		log.Printf("[Vertex] [RunParallel] no usable nodes and no proxy configured; refusing direct empty-proxy request")
+		return zero, NewInternalError("no proxy configured: import or enable proxy nodes, choose an active node, or set proxy_url")
+	}
+
+	log.Printf("[Vertex] [RunParallel] racing %d proxy node(s)", len(cands))
 	for _, c := range cands {
-		log.Printf("[Vertex] [RunParallel] 参与节点: %s", c.Name)
+		log.Printf("[Vertex] [RunParallel] candidate node: %s", c.Name)
 	}
 
 	ctxRace, cancel := context.WithCancel(ctx)
@@ -36,7 +45,7 @@ func RunParallel[T any](ctx context.Context, cfg config.AppConfig, op func(ctx c
 		err error
 	}
 
-	resCh := make(chan result, cfg.ParallelPoolSize)
+	resCh := make(chan result, poolSize)
 	var active int32
 	var mu sync.Mutex
 	activeKeys := make(map[string]bool)
@@ -66,7 +75,7 @@ func RunParallel[T any](ctx context.Context, cfg config.AppConfig, op func(ctx c
 		round++
 	}
 
-	for i := 0; i < cfg.ParallelPoolSize && i < len(cands); i++ {
+	for i := 0; i < poolSize && i < len(cands); i++ {
 		mu.Lock()
 		activeKeys[cands[i].RawURI] = true
 		atomic.AddInt32(&active, 1)
@@ -81,33 +90,20 @@ func RunParallel[T any](ctx context.Context, cfg config.AppConfig, op func(ctx c
 	}
 
 	var lastErr error
-	var zero T
 	for atomic.LoadInt32(&active) > 0 {
 		select {
 		case res := <-resCh:
 			atomic.AddInt32(&active, -1)
 			if res.err == nil {
-				name := res.uri
-				for _, c := range cands {
-					if c.RawURI == res.uri {
-						name = c.Name
-						break
-					}
-				}
-				log.Printf("[Vertex] [RunParallel] 节点胜出: %s", name)
+				name := nodeName(cands, res.uri)
+				log.Printf("[Vertex] [RunParallel] winning node: %s", name)
 				nodes.RecordTest(res.uri, true, 50, "")
 				return res.val, nil
 			}
 			lastErr = res.err
 			if ctx.Err() == nil && res.err != context.Canceled {
-				name := res.uri
-				for _, c := range cands {
-					if c.RawURI == res.uri {
-						name = c.Name
-						break
-					}
-				}
-				log.Printf("[Racing] 节点 %s 失败，原因: %s", name, res.err.Error())
+				name := nodeName(cands, res.uri)
+				log.Printf("[Racing] node %s failed: %s", name, res.err.Error())
 				nodes.RecordTest(res.uri, false, 0, res.err.Error())
 			}
 			startNext()
@@ -123,13 +119,11 @@ func RunParallel[T any](ctx context.Context, cfg config.AppConfig, op func(ctx c
 }
 
 func StreamParallel(ctx context.Context, cfg config.AppConfig, op func(ctx context.Context, proxyURI string) <-chan StreamChunk, yield func(StreamChunk) bool) {
-	cands := nodes.SelectForParallel(cfg.ParallelPoolSize)
-	if !cfg.ParallelPoolEnabled || len(cands) == 0 {
-		proxy := cfg.ActiveNodeURI
-		if proxy == "" {
-			proxy = cfg.ProxyURL
-		}
-		log.Printf("[Vertex] [StreamParallel] 降级为单节点运行: %s", proxy)
+	poolSize := effectiveParallelPoolSize(cfg)
+	proxy := configuredSingleProxy(cfg)
+
+	if !cfg.ParallelPoolEnabled && proxy != "" {
+		log.Printf("[Vertex] [StreamParallel] running with single configured proxy: %s", proxy)
 		for chunk := range op(ctx, proxy) {
 			if !yield(chunk) {
 				return
@@ -137,10 +131,28 @@ func StreamParallel(ctx context.Context, cfg config.AppConfig, op func(ctx conte
 		}
 		return
 	}
-	log.Printf("[Vertex] [StreamParallel] 开启并发测速, %d 个节点参与", len(cands))
-	for _, c := range cands {
-		log.Printf("[Vertex] [StreamParallel] 参与节点: %s", c.Name)
+
+	cands := nodes.SelectForParallel(poolSize)
+	if len(cands) == 0 {
+		if proxy != "" {
+			log.Printf("[Vertex] [StreamParallel] no usable nodes; falling back to configured proxy: %s", proxy)
+			for chunk := range op(ctx, proxy) {
+				if !yield(chunk) {
+					return
+				}
+			}
+			return
+		}
+		log.Printf("[Vertex] [StreamParallel] no usable nodes and no proxy configured; refusing direct empty-proxy request")
+		yield(StreamChunk{Err: NewInternalError("no proxy configured: import or enable proxy nodes, choose an active node, or set proxy_url")})
+		return
 	}
+
+	log.Printf("[Vertex] [StreamParallel] racing %d proxy node(s)", len(cands))
+	for _, c := range cands {
+		log.Printf("[Vertex] [StreamParallel] candidate node: %s", c.Name)
+	}
+
 	ctxRace, cancel := context.WithCancel(ctx)
 	defer cancel()
 	type res struct {
@@ -177,6 +189,7 @@ func StreamParallel(ctx context.Context, cfg config.AppConfig, op func(ctx conte
 			}
 		}(cand.RawURI)
 	}
+
 	var winner *res
 loop:
 	for atomic.LoadInt32(&active) > 0 {
@@ -185,32 +198,21 @@ loop:
 			atomic.AddInt32(&active, -1)
 			if r.err == nil {
 				winner = &r
-				name := r.uri
-				for _, c := range cands {
-					if c.RawURI == r.uri {
-						name = c.Name
-						break
-					}
-				}
-				log.Printf("[Vertex] [StreamParallel] 节点胜出: %s", name)
+				name := nodeName(cands, r.uri)
+				log.Printf("[Vertex] [StreamParallel] winning node: %s", name)
 				nodes.RecordTest(r.uri, true, 50, "")
 				break loop
 			}
 			if ctx.Err() == nil && r.err != context.Canceled {
-				name := r.uri
-				for _, c := range cands {
-					if c.RawURI == r.uri {
-						name = c.Name
-						break
-					}
-				}
-				log.Printf("[Racing] 节点 %s 失败，原因: %s", name, r.err.Error())
+				name := nodeName(cands, r.uri)
+				log.Printf("[Racing] node %s failed: %s", name, r.err.Error())
 				nodes.RecordTest(r.uri, false, 0, r.err.Error())
 			}
 		case <-ctx.Done():
 			return
 		}
 	}
+
 	if winner != nil {
 		if !yield(winner.first) {
 			return
@@ -223,4 +225,30 @@ loop:
 	} else {
 		yield(StreamChunk{Err: NewInternalError("all nodes failed to stream")})
 	}
+}
+
+func effectiveParallelPoolSize(cfg config.AppConfig) int {
+	if cfg.ParallelPoolSize > 0 {
+		return cfg.ParallelPoolSize
+	}
+	if def := config.DefaultConfig().ParallelPoolSize; def > 0 {
+		return def
+	}
+	return 1
+}
+
+func configuredSingleProxy(cfg config.AppConfig) string {
+	if cfg.ActiveNodeURI != "" {
+		return cfg.ActiveNodeURI
+	}
+	return cfg.ProxyURL
+}
+
+func nodeName(cands []nodes.Node, uri string) string {
+	for _, c := range cands {
+		if c.RawURI == uri {
+			return c.Name
+		}
+	}
+	return uri
 }

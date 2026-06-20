@@ -11,7 +11,7 @@ import (
 // drop_max_tokens 处理）。OpenAI chat 端点的 drop_max_tokens 已在 ConvertChatRequest 内处理，
 // 但 anti429 注入对所有路径一致——为保持各路径行为一致，这里独立实现。
 func (s *Server) injectAnti429(payload map[string]any) {
-	cfg := s.cfg
+	cfg := s.currentConfig()
 
 	// drop_max_tokens：移除 generationConfig.maxOutputTokens。
 	if cfg.DropMaxTokens {

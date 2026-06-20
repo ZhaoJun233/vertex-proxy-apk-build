@@ -1,7 +1,6 @@
 package api
 
 import (
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -31,7 +30,6 @@ func supportedGenerationMethods() []any {
 func (s *Server) handleModelsOAI(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().Unix()
 	models := config.ModelsWithFakeVariants()
-	log.Printf("[Server] [Models] 请求 OAI 模型列表，返回 %d 个模型", len(models))
 	data := make([]any, 0, len(models))
 	for _, m := range models {
 		data = append(data, map[string]any{

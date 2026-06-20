@@ -26,15 +26,27 @@ import (
 
 // Server 持有依赖，挂载路由。
 type Server struct {
-	vc      *vertex.VertexAIClient
-	keys    *APIKeyManager
-	cfg     config.AppConfig
-	metrics *metrics.Collector
+	vc         *vertex.VertexAIClient
+	keys       *APIKeyManager
+	cfg        config.AppConfig
+	dynamicCfg bool
+	metrics    *metrics.Collector
 }
 
 // NewServer 构造 Server。
 func NewServer(vc *vertex.VertexAIClient, keys *APIKeyManager, cfg config.AppConfig) *Server {
-	return &Server{vc: vc, keys: keys, cfg: cfg, metrics: metrics.Default}
+	return &Server{vc: vc, keys: keys, cfg: cfg, dynamicCfg: true, metrics: metrics.Default}
+}
+
+func (s *Server) currentConfig() config.AppConfig {
+	if s.dynamicCfg {
+		return config.Load()
+	}
+	return s.cfg
+}
+
+func shouldUseFakeStream(stream, useFakePrefix, forceFakeStream bool) bool {
+	return stream && (useFakePrefix || forceFakeStream)
 }
 
 // Handler 构建带中间件链（recover → CORS → APIKey）的 HTTP handler。
@@ -104,7 +116,6 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[Server] [Health] 收到健康检查请求")
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"status":          "healthy",
 		"timestamp":       time.Now().Unix(),
@@ -115,7 +126,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // handleMetrics 返回服务的实时状态，供健康检查与管理后台做存活探测。
 // 刻意不含 per-key/模型用量（那是上游网关的账本职责）。
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[Server] [Metrics] 收到指标获取请求")
 	s.writeJSON(w, http.StatusOK, s.metricsBody())
 }
 
@@ -149,13 +159,13 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	actualModel, useFake := stripFakePrefix(rawModel)
 	body["model"] = actualModel
 
+	cfg := s.currentConfig()
+
 	// force_no_stream：强制非流式。
 	stream, _ := body["stream"].(bool)
-	if stream && s.cfg.ForceNoStream {
-		stream = false
-	}
+	forceFakeStream := stream && cfg.ForceNoStream
 
-	model, geminiPayload, convErr := transform.ConvertChatRequest(body, s.cfg)
+	model, geminiPayload, convErr := transform.ConvertChatRequest(body, cfg)
 	if convErr != nil {
 		s.oaiError(w, http.StatusBadRequest, "请求参数有误: "+convErr.Error()+" (invalid argument)", "invalid_request_error")
 		return
@@ -164,7 +174,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	// n 多候选解析：OpenAI n = 返回 n 个 choice。Gemini 3.x 不支持 candidateCount>1（实测 400），
 	// 故 n>1 用并发扇出实现（见下方非流式分支）。上限来自配置 max_n（默认 8），防滥用放大上游 429/成本。
 	// 流式取舍：真流式热路径全程硬编码 index 0，故流式仅支持 n=1（stream=true 且 n>1 直接 400）。
-	n, nErr := resolveN(body["n"], s.cfg.MaxN)
+	n, nErr := resolveN(body["n"], cfg.MaxN)
 	if nErr != "" {
 		s.writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{
 			"message": nErr, "type": "invalid_request_error", "code": 400, "param": "n",
@@ -179,7 +189,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[Server] [ChatCompletions] 收到请求: 模型=%s, 真模型=%s, 流式=%v, n=%d", rawModel, actualModel, stream, n)
+	log.Printf("[Server] [ChatCompletions] 收到请求: 模型=%s, 真模型=%s, 流式=%v, n=%d, force_no_stream=%v", rawModel, actualModel, stream, n, cfg.ForceNoStream)
 
 	// 图像分辨率控制（additive）：chat 端点也支持 image_size/imageSize/size/imageConfig 写入 imageConfig.imageSize。
 	transform.ApplyImageConfig(geminiPayload, body)
@@ -207,7 +217,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	s.injectAnti429(geminiPayload)
 
 	// 假流式（stream=true 且模型带假流式前缀）：先完整非流式生成，再切片按 OAI SSE 推。
-	if stream && useFake {
+	if shouldUseFakeStream(stream, useFake, forceFakeStream) {
 		s.oaiFakeStream(r.Context(), w, model, geminiPayload)
 		return
 	}
@@ -544,12 +554,9 @@ func (w *statusWriter) Flush() {
 // withBodyLimit 在 config.max_request_mb>0 时给入站 body 套 MaxBytesReader（防绝对失控的安全阀）。
 // 默认 0 = 不限，直接透传（不对合法大媒体取舍）。
 func (s *Server) withBodyLimit(next http.Handler) http.Handler {
-	limit := int64(s.cfg.MaxRequestMB) << 20
-	if limit <= 0 {
-		return next
-	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Body != nil {
+		limit := int64(s.currentConfig().MaxRequestMB) << 20
+		if r.Body != nil && limit > 0 {
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		next.ServeHTTP(w, r)

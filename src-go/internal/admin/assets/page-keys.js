@@ -3,8 +3,11 @@ function maskKey(k) {
 }
 
 function copyText(text) {
+  const timeout = new Promise(function(_, reject) {
+    setTimeout(function() { reject(new Error('copy timeout')); }, 1000);
+  });
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    return navigator.clipboard.writeText(text);
+    return Promise.race([navigator.clipboard.writeText(text), timeout]);
   }
   var ta = document.createElement('textarea');
   ta.value = text;
@@ -93,20 +96,25 @@ async function addKey() {
   var key = document.getElementById('kKey').value.trim();
   var desc = document.getElementById('kDesc').value.trim();
   if (!name) return toast('\u8BF7\u586B\u540D\u79F0');
-  const resp = await API.keys.add(name, key, desc);
-  document.getElementById('kName').value = '';
-  document.getElementById('kKey').value = '';
-  document.getElementById('kDesc').value = '';
-  loadKeys();
-  if (resp && resp.key) {
-    document.getElementById('kKey').value = resp.key;
-    copyText(resp.key).then(function() {
-      toast('\u5DF2\u6DFB\u52A0\u5E76\u590D\u5236\u5B8C\u6574 Key');
-    }).catch(function() {
-      toast('\u5DF2\u6DFB\u52A0\uFF0C\u5B8C\u6574 Key \u5DF2\u7559\u5728\u8F93\u5165\u6846');
-    });
-  } else {
-    toast('\u5DF2\u6DFB\u52A0');
+  try {
+    const resp = await API.keys.add(name, key, desc);
+    document.getElementById('kName').value = '';
+    document.getElementById('kKey').value = '';
+    document.getElementById('kDesc').value = '';
+    await loadKeys();
+    if (resp && resp.key) {
+      document.getElementById('kKey').value = resp.key;
+      try {
+        await copyText(resp.key);
+        toast('\u5DF2\u6DFB\u52A0\u5E76\u590D\u5236\u5B8C\u6574 Key');
+      } catch (e) {
+        toast('\u5DF2\u6DFB\u52A0\uFF0C\u5B8C\u6574 Key \u5DF2\u7559\u5728\u8F93\u5165\u6846');
+      }
+    } else {
+      toast('\u5DF2\u6DFB\u52A0');
+    }
+  } catch (e) {
+    toast('\u6DFB\u52A0\u5931\u8D25: ' + e.message);
   }
 }
 
