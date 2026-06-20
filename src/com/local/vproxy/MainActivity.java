@@ -6,6 +6,8 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.widget.Button;
 import android.widget.EditText;
@@ -27,11 +29,40 @@ public class MainActivity extends Activity {
 
     private EditText adminPasswordInput;
     private TextView status;
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private boolean monitorRunning = false;
+    private final Runnable monitorTask = new Runnable() {
+        @Override
+        public void run() {
+            readLogsSilently();
+            new Thread(() -> {
+                try {
+                    httpGet("http://127.0.0.1:2156/health", null, 800, 1500);
+                    httpGet("http://127.0.0.1:2156/v1/models", null, 800, 1500);
+                } catch (Exception ignored) {
+                }
+            }).start();
+            handler.postDelayed(this, 1000);
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         buildUi();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        startLogMonitor();
+    }
+
+    @Override
+    protected void onPause() {
+        handler.removeCallbacks(monitorTask);
+        monitorRunning = false;
+        super.onPause();
     }
 
     private void buildUi() {
@@ -83,8 +114,8 @@ public class MainActivity extends Activity {
         root.addView(check);
 
         Button logs = new Button(this);
-        logs.setText("\u67e5\u770b\u6700\u8fd1\u65e5\u5fd7");
-        logs.setOnClickListener(v -> showLogs());
+        logs.setText("\u6253\u5f00\u5b9e\u65f6\u65e5\u5fd7\u7a97\u53e3");
+        logs.setOnClickListener(v -> startActivity(new Intent(this, LogActivity.class)));
         root.addView(logs);
 
         Button stop = new Button(this);
@@ -152,6 +183,15 @@ public class MainActivity extends Activity {
         } else {
             startService(intent);
         }
+        startLogMonitor();
+    }
+
+    private void startLogMonitor() {
+        if (monitorRunning) {
+            return;
+        }
+        monitorRunning = true;
+        handler.post(monitorTask);
     }
 
     private int dp(int value) {
