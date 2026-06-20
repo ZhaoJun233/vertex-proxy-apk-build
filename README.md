@@ -1,5 +1,7 @@
 # Vertex Proxy Android APK Build
 
+[中文说明](README.zh-CN.md)
+
 This repository contains an Android APK build of a local Vertex/Gemini proxy.
 The app runs a local HTTP service on the phone and exposes an OpenAI-compatible
 endpoint for other Android agents.
