@@ -74,7 +74,7 @@ public class MainActivity extends Activity {
 
         Button openAdmin = new Button(this);
         openAdmin.setText("\u6253\u5f00\u7ba1\u7406\u540e\u53f0");
-        openAdmin.setOnClickListener(v -> startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(ADMIN_URL))));
+        openAdmin.setOnClickListener(v -> openAdminWhenReady());
         root.addView(openAdmin);
 
         Button check = new Button(this);
@@ -133,6 +133,7 @@ public class MainActivity extends Activity {
         }
         status.setText(
             "\u5df2\u53d1\u9001\u542f\u52a8\u547d\u4ee4\u3002\n\n" +
+            "\u6b63\u5728\u7b49\u5f85\u672c\u5730\u670d\u52a1\u5c31\u7eea\uff0c\u8bf7\u7a0d\u5019\u2026\n\n" +
             "\u7ba1\u7406\u540e\u53f0: " + ADMIN_URL + "\n" +
             "\u7ba1\u7406\u5bc6\u7801: " + password + "\n\n" +
             "Base URL: " + BASE_URL + "\n" +
@@ -140,6 +141,7 @@ public class MainActivity extends Activity {
             "\u4ee3\u7406: \u8bf7\u5728\u7ba1\u7406\u540e\u53f0\u7684\u8bbe\u7f6e\u9875\u4fee\u6539\n" +
             "Model: gemini-2.5-flash"
         );
+        waitForService(false);
     }
 
     private int dp(int value) {
@@ -173,6 +175,48 @@ public class MainActivity extends Activity {
                 result.append("\n");
             }
             runOnUiThread(() -> status.setText(result.toString()));
+        }).start();
+    }
+
+    private void openAdminWhenReady() {
+        status.setText("\u6b63\u5728\u68c0\u67e5\u670d\u52a1\u662f\u5426\u5c31\u7eea\u2026");
+        waitForService(true);
+    }
+
+    private void waitForService(boolean openAdmin) {
+        new Thread(() -> {
+            Exception lastError = null;
+            for (int i = 1; i <= 30; i++) {
+                try {
+                    httpGet("http://127.0.0.1:2156/health", null, 1000, 2000);
+                    int attempt = i;
+                    runOnUiThread(() -> {
+                        status.setText(
+                            "\u672c\u5730\u670d\u52a1\u5df2\u5c31\u7eea\uff08\u7b2c " + attempt + " \u6b21\u68c0\u6d4b\uff09\u3002\n\n" +
+                            "Base URL: " + BASE_URL + "\n" +
+                            "\u6a21\u578b\u7aef\u70b9: http://127.0.0.1:2156/v1/models\n" +
+                            "\u7ba1\u7406\u540e\u53f0: " + ADMIN_URL
+                        );
+                        if (openAdmin) {
+                            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(ADMIN_URL + "?t=" + System.currentTimeMillis())));
+                        }
+                    });
+                    return;
+                } catch (Exception e) {
+                    lastError = e;
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+            Exception err = lastError;
+            runOnUiThread(() -> status.setText(
+                "\u670d\u52a1\u8fd8\u6ca1\u5c31\u7eea\uff0c\u8bf7\u70b9\u300c\u68c0\u6d4b\u672c\u5730\u7aef\u70b9\u300d\u6216\u300c\u67e5\u770b\u6700\u8fd1\u65e5\u5fd7\u300d\u770b\u8be6\u7ec6\u539f\u56e0\u3002\n" +
+                (err == null ? "" : err.getClass().getSimpleName() + ": " + err.getMessage())
+            ));
         }).start();
     }
 

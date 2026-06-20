@@ -39,6 +39,43 @@ func TestParseClashYamlToURIs(t *testing.T) {
 	}
 }
 
+func TestParseClashYamlToURIs_Multiline(t *testing.T) {
+	yamlContent := `proxies:
+- name: XMRth-Google-01
+  type: trojan
+  server: ipox2.xmrthnode.com
+  port: 24501
+  password: 123456
+  sni: mpvideo.qpic.cn
+  skip-cert-verify: true
+  udp: true
+- name: HK 000
+  type: vmess
+  server: txh000.xmrthnode.com
+  port: 443
+  uuid: 9690ec80-d0d0-3c4f-997d-5ec650d58c88
+  alterId: 0
+  cipher: auto
+  network: ws
+  ws-opts:
+    path: /index
+    headers:
+      Host: ws-aicdn.com
+  tls: true
+  skip-cert-verify: true
+`
+	uris := parseClashYamlToURIs(yamlContent)
+	if len(uris) != 2 {
+		t.Fatalf("expected 2 URIs, got %d: %v", len(uris), uris)
+	}
+	if !strings.HasPrefix(uris[0], "trojan://") || !strings.Contains(uris[0], "sni=mpvideo.qpic.cn") {
+		t.Fatalf("trojan URI not converted correctly: %s", uris[0])
+	}
+	if !strings.HasPrefix(uris[1], "vmess://") {
+		t.Fatalf("vmess URI not converted correctly: %s", uris[1])
+	}
+}
+
 func TestAdminFetchSub_Yaml(t *testing.T) {
 	yamlContent := []byte(`proxies:
   - {name: "🇭🇰 香港Y01", type: ss, server: "hk01-ae5", port: 443, cipher: aes-256-gcm, password: "password"}

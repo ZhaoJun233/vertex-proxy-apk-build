@@ -19,6 +19,7 @@ import (
 	"github.com/bsfdsagfadg/vertex/internal/config"
 	"github.com/bsfdsagfadg/vertex/internal/nodes"
 	"github.com/bsfdsagfadg/vertex/internal/transport"
+	"gopkg.in/yaml.v3"
 )
 
 func (s *Server) adminGetNodes(w http.ResponseWriter, _ *http.Request) {
@@ -533,6 +534,10 @@ func decodeSubBase64(s string) ([]byte, error) {
 
 // parseClashYamlToURIs 解析极简 yaml 格式，提取 proxies 列表并转换为 URI 节点
 func parseClashYamlToURIs(yamlText string) []string {
+	if uris := parseClashYamlWithParser(yamlText); len(uris) > 0 {
+		return uris
+	}
+
 	var uris []string
 
 	// 我们按行流式扫描 proxies 字段
@@ -577,6 +582,60 @@ func parseClashYamlToURIs(yamlText string) []string {
 		// 但为了健壮性，我们可以只处理 {} 单行形式）
 	}
 	return uris
+}
+
+func parseClashYamlWithParser(yamlText string) []string {
+	var doc struct {
+		Proxies []map[string]any `yaml:"proxies"`
+	}
+	if err := yaml.Unmarshal([]byte(yamlText), &doc); err != nil {
+		log.Printf("[Admin] [ImportNodes] YAML parser failed: %v", err)
+		return nil
+	}
+	uris := make([]string, 0, len(doc.Proxies))
+	for _, proxy := range doc.Proxies {
+		if uri := clashProxyMapToURI(proxy); uri != "" {
+			uris = append(uris, uri)
+		}
+	}
+	return uris
+}
+
+func clashProxyMapToURI(proxy map[string]any) string {
+	attrs := make(map[string]string, len(proxy))
+	for k, v := range proxy {
+		switch vv := v.(type) {
+		case string:
+			attrs[k] = vv
+		case int:
+			attrs[k] = strconv.Itoa(vv)
+		case int64:
+			attrs[k] = strconv.FormatInt(vv, 10)
+		case float64:
+			attrs[k] = strconv.Itoa(int(vv))
+		case bool:
+			if vv {
+				attrs[k] = "true"
+			} else {
+				attrs[k] = "false"
+			}
+		}
+	}
+
+	if network, _ := proxy["network"].(string); network == "ws" {
+		if wsOpts, ok := proxy["ws-opts"].(map[string]any); ok {
+			path, _ := wsOpts["path"].(string)
+			if path != "" {
+				attrs["ws-path"] = path
+			}
+			if headers, ok := wsOpts["headers"].(map[string]any); ok {
+				if host, _ := headers["Host"].(string); host != "" {
+					attrs["ws-host"] = host
+				}
+			}
+		}
+	}
+	return clashProxyToURI(attrs)
 }
 
 func parseInlineYamlAttrs(s string) map[string]string {
@@ -694,6 +753,12 @@ func clashProxyToURI(attrs map[string]string) string {
 
 		if attrs["network"] == "ws" {
 			vmessJSON["net"] = "ws"
+			if path := attrs["ws-path"]; path != "" {
+				vmessJSON["path"] = path
+			}
+			if host := attrs["ws-host"]; host != "" {
+				vmessJSON["host"] = host
+			}
 			if wsOpts, ok := attrs["ws-opts"]; ok {
 				// 提取 path 和 Host
 				// 极简提取 ws-opts 中的 path 和 headers
@@ -741,9 +806,21 @@ func clashProxyToURI(attrs map[string]string) string {
 		}
 
 		var query []string
-		if attrs["tls"] == "true" {
+		if attrs["tls"] == "true" || typ == "trojan" {
 			query = append(query, "security=tls")
-			query = append(query, "sni="+sni)
+			query = append(query, "sni="+url.QueryEscape(sni))
+		}
+		if attrs["skip-cert-verify"] == "true" {
+			query = append(query, "allowInsecure=1")
+		}
+		if network := attrs["network"]; network != "" {
+			query = append(query, "type="+url.QueryEscape(network))
+		}
+		if path := attrs["ws-path"]; path != "" {
+			query = append(query, "path="+url.QueryEscape(path))
+		}
+		if host := attrs["ws-host"]; host != "" {
+			query = append(query, "host="+url.QueryEscape(host))
 		}
 
 		queryStr := ""
