@@ -80,6 +80,10 @@ public class ProxyService extends Service {
             appendWrapperLog("binary=" + binary.getAbsolutePath() + " exists=" + binary.exists() + " canExecute=" + binary.canExecute());
             ProcessBuilder builder = new ProcessBuilder(binary.getAbsolutePath());
             builder.directory(workDir);
+            File configDir = new File(workDir, "config");
+            builder.environment().put("VPROXY_CONFIG", new File(configDir, "config.json").getAbsolutePath());
+            builder.environment().put("VPROXY_MODELS", new File(configDir, "models.json").getAbsolutePath());
+            builder.environment().put("VPROXY_API_KEYS", new File(configDir, "api_keys.txt").getAbsolutePath());
             builder.redirectErrorStream(true);
             builder.redirectOutput(logFile);
             process = builder.start();
